@@ -26,6 +26,8 @@
 #import "RKRequestCache.h"
 #import "RKRequestQueue.h"
 
+#define RESTKIT_SSL_VALIDATION 1
+
 /////////////////////////////////////////////////////////////////////////
 
 /**
