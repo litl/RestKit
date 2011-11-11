@@ -122,6 +122,9 @@ static void ReachabilityCallback(SCNetworkReachabilityRef target, SCNetworkReach
                 // Obtain the flags after giving other objects a chance to observe us
                 [self getFlags];
             });
+            
+            // Schedule the observer
+            [self scheduleObserver];
 		}
 	}
 	return self;
@@ -213,7 +216,7 @@ static void ReachabilityCallback(SCNetworkReachabilityRef target, SCNetworkReach
             (_reachabilityFlags & kSCNetworkReachabilityFlagsIsWWAN)               ? 'W' : '-',
             #else
             // If we are not on iOS, always output a dash for WWAN
-            '-'
+            '-',
             #endif
             (_reachabilityFlags & kSCNetworkReachabilityFlagsReachable)            ? 'R' : '-',
             (_reachabilityFlags & kSCNetworkReachabilityFlagsTransientConnection)  ? 't' : '-',
@@ -343,7 +346,7 @@ static void ReachabilityCallback(SCNetworkReachabilityRef target, SCNetworkReach
     }
 }
 
-- (void)unscheduleObserver {    
+- (void)unscheduleObserver {
 	if (_reachabilityRef) {
         RKLogDebug(@"%@: Unscheduling reachability observer from main dispatch queue", self);
         if (! SCNetworkReachabilitySetDispatchQueue(_reachabilityRef, NULL)) {
