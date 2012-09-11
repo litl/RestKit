@@ -115,7 +115,7 @@ typedef enum {
 	RKRequestMethod _method;
 	BOOL _isLoading;
 	BOOL _isLoaded;
-	RKRequestCachePolicy _cachePolicy;
+    RKRequestCachePolicy _cachePolicy;
     BOOL _sentSynchronously;
     RKRequestCache *_cache;
     NSTimeInterval _cacheTimeoutInterval;
@@ -126,6 +126,9 @@ typedef enum {
     RKRequestBackgroundPolicy _backgroundPolicy;
     UIBackgroundTaskIdentifier _backgroundTaskIdentifier;
     #endif
+    
+    @protected
+    BOOL _isCancelled;
 }
 
 /**

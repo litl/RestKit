@@ -183,7 +183,12 @@
     RKObjectMapper* mapper = [RKObjectMapper mapperWithObject:parsedData mappingProvider:mappingProvider];
     mapper.targetObject = targetObject;
     mapper.delegate = self;
-    RKObjectMappingResult* result = [mapper performMapping];
+    
+    RKObjectMappingResult* result = nil;
+    
+    if (!_isCancelled) {
+        result = [mapper performMapping];
+    }
     
     // Log any mapping errors
     if (mapper.errorCount > 0) {

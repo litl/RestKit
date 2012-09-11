@@ -321,6 +321,7 @@
 	[_connection release];
 	_connection = nil;
 	_isLoading = NO;
+    _isCancelled = YES;
     
     if (informDelegate && [_delegate respondsToSelector:@selector(requestDidCancelLoad:)]) {
         [_delegate requestDidCancelLoad:self];
