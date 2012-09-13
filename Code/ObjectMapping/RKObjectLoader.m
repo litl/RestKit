@@ -188,6 +188,8 @@
     
     if (!_isCancelled) {
         result = [mapper performMapping];
+    } else {
+        return [RKObjectMappingResult mappingResultWithDictionary:[NSDictionary dictionary]];
     }
     
     // Log any mapping errors
