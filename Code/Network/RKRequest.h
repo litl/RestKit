@@ -131,6 +131,8 @@ typedef enum {
     BOOL _isCancelled;
 }
 
+@property(nonatomic, assign) BOOL isSentFromRequestQueue;
+
 /**
  * The URL this request is loading
  */

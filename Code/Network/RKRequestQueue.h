@@ -37,6 +37,7 @@
 	NSTimer *_queueTimer;
 	BOOL _suspended;
     BOOL _showsNetworkActivityIndicatorWhenBusy;
+    NSMutableDictionary *_sentRequests;
 }
 
 /**

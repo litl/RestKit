@@ -170,6 +170,7 @@ static const NSTimeInterval kFlushDelay = 0.3;
     [_queueTimer invalidate];
     [_requests release];
     _requests = nil;
+    [_sentRequests release];
 
     [super dealloc];
 }
@@ -179,7 +180,7 @@ static const NSTimeInterval kFlushDelay = 0.3;
 }
 
 - (NSString*)description {
-    return [NSString stringWithFormat:@"<%@: %p name=%@ suspended=%@ requestCount=%d loadingCount=%d/%d>", 
+    return [NSString stringWithFormat:@"<%@: %p name=%@ suspended=%@ requestCount=%ld loadingCount=%ld/%ld>",
             NSStringFromClass([self class]), self, self.name, self.suspended ? @"YES" : @"NO", 
             self.count, self.loadingCount, self.concurrentRequestsLimit];
 }
@@ -231,12 +232,50 @@ static const NSTimeInterval kFlushDelay = 0.3;
 - (RKRequest*)nextRequest {
     for (NSUInteger i = 0; i < [_requests count]; i++) {
         RKRequest* request = [_requests objectAtIndex:i];
-        if ([request isUnsent]) {
+        if (![request isSentFromRequestQueue]) {
             return request;
         }
     }
     
     return nil;
+}
+
+- (void)debugRequests:(RKRequest*) request add:(BOOL)add
+{
+    if (!_sentRequests) _sentRequests = [[NSMutableDictionary alloc] init];
+    if (add) {
+        NSArray * keys = [_sentRequests allKeys];
+        NSString *url = [[request URL] absoluteString];
+        for(NSString *key in keys) {
+            RKRequest* req = [_sentRequests valueForKey:key];
+            if ([url isEqualToString:[[request URL] absoluteString]]) {
+                NSLog(@"SENDING duplicate URL savedRequest=%@, request=%@, %@",req, request, [[request URL] absoluteString]);
+            }
+        }
+
+        RKRequest *savedRequest = [_sentRequests valueForKey:[NSString stringWithFormat:@"%@",request]];
+        if (savedRequest) {
+            NSLog(@"SENDING duplicate object!! savedRequest=%@, reguest=%@, %@",savedRequest, request, [[request URL] absoluteString]);
+        }
+
+        [_sentRequests setValue:request forKey:[NSString stringWithFormat:@"%@",request]];
+    } else {
+        [_sentRequests removeObjectForKey:[NSString stringWithFormat:@"%@",request]];
+    }
+
+    // debug the _sentRequests dictionary
+    NSArray * keys = [_sentRequests allKeys];
+    NSLog(@"debugRequests: SENT ARRAY count =%ld, loading count = %ld",(long)[keys count], (long) self.loadingCount);
+    for(NSString *key in keys) {
+        RKRequest* req = [_sentRequests valueForKey:key];
+        NSLog(@"Waiting on response for request = %@, url=%@", req, [[req URL] absoluteString]);
+    }
+
+    NSLog(@"debugRequests: _requests count = %ld  ", (long)[_requests count]);
+    for (int i = 0; i < [_requests count]; i++)  {
+        RKRequest* req = [_requests objectAtIndex:i];
+        NSLog(@"Waiting on response for request = %@, url=%@", req, [[req URL] absoluteString]);
+    }
 }
 
 - (void)loadNextInQueue {
@@ -262,14 +301,25 @@ static const NSTimeInterval kFlushDelay = 0.3;
     @synchronized(self) {
         RKRequest* request = [self nextRequest];
         while (request && self.loadingCount < _concurrentRequestsLimit) {
-            RKLogTrace(@"Processing request %@ in queue %@", request, self);
+            //NSLog(@"Processing request %@ in queue %@", request, self);
             if ([_delegate respondsToSelector:@selector(requestQueue:willSendRequest:)]) {
                 [_delegate requestQueue:self willSendRequest:request];
             }
 
             self.loadingCount = self.loadingCount + 1;
+
+            // Left as NSLog in case we want to re-examine queue behavoir, using the available RKLog...
+            // methods creates a lot of relative noise
+            /*
+            NSLog(@"Incremented the loading count to %ld, _concurrentRequestsLimit =%lu, _requests count = %ld ",
+                  (long) self.loadingCount, (unsigned long)_concurrentRequestsLimit, (long)[_requests count]);
+            NSLog(@"sendAsynchronously request %@ to URL %@.", request, [[request URL] absoluteString]);
+            [self debugRequests:request add:YES];
+            */
+
+            [request setIsSentFromRequestQueue:YES];
             [request sendAsynchronously];
-            RKLogDebug(@"Sent request %@ from queue %@. Loading count = %ld of %ld", request, self, (long) self.loadingCount, (long) _concurrentRequestsLimit);
+            RKLogDebug(@"Sent request %@ from queue %@. Loading count = %ld of %ld url=%@", request, self, (long) self.loadingCount, (long) _concurrentRequestsLimit, [[request URL] absoluteString]);
 
             if ([_delegate respondsToSelector:@selector(requestQueue:didSendRequest:)]) {
                 [_delegate requestQueue:self didSendRequest:request];
@@ -317,6 +367,8 @@ static const NSTimeInterval kFlushDelay = 0.3;
 
 - (void)addRequest:(RKRequest*)request {
     RKLogTrace(@"Request %@ added to queue %@", request, self);
+    // Left NSLog for easy Queue-only debugging
+    //NSLog(@"addRequest beforeCount =%d Request %@ url=%@", [_requests count],request, [[request URL] absoluteString]);
 
     @synchronized(self) {
         [_requests addObject:request];
@@ -338,22 +390,30 @@ static const NSTimeInterval kFlushDelay = 0.3;
 - (BOOL)removeRequest:(RKRequest*)request decrementCounter:(BOOL)decrementCounter {
     if ([self containsRequest:request]) {
         RKLogTrace(@"Removing request %@ from queue %@", request, self);
+        // Left these NSLogs for easy Queue-only debugging
+        //NSLog(@"removeRequest request %@", request);
         @synchronized(self) {
             [_requests removeObject:request];
             request.queue = nil;
+            //NSLog(@"removeRequest, after removeObject _requests count = %d  decrementCounter =%d", [_requests count], decrementCounter);
+            if (decrementCounter) {
+                NSAssert(self.loadingCount > 0, @"Attempted to decrement loading count below zero");
+                self.loadingCount = self.loadingCount - 1;
+
+                // Left as NSLog in case we want to re-examine queue behavoir, using the available RKLog...
+                // methods creates a lot of relative noise
+                //NSLog(@"Decremented the loading count to %ld", (long) self.loadingCount);
+                //[self debugRequests:request add:NO];
+            }
         }
 
         [[NSNotificationCenter defaultCenter] removeObserver:self name:RKRequestDidLoadResponseNotification object:request];
         [[NSNotificationCenter defaultCenter] removeObserver:self name:RKRequestDidFailWithErrorNotification object:request];
         
-        if (decrementCounter) {
-            NSAssert(self.loadingCount > 0, @"Attempted to decrement loading count below zero");
-            self.loadingCount = self.loadingCount - 1;
-            RKLogTrace(@"Decremented the loading count to %ld", (long) self.loadingCount);
-        }
         return YES;
     }
     
+    //NSLog(@"Failed to remove request %@ from queue %@: it is not in the queue.", request, self);
     RKLogWarning(@"Failed to remove request %@ from queue %@: it is not in the queue.", request, self);
     return NO;
 }
@@ -365,6 +425,7 @@ static const NSTimeInterval kFlushDelay = 0.3;
 - (void)cancelRequest:(RKRequest*)request loadNext:(BOOL)loadNext {
     if ([request isUnsent]) {
         RKLogDebug(@"Canceled undispatched request %@ and removed from queue %@", request, self);
+        NSLog(@"Canceled undispatched request %@ and removed from queue %@", request, self);
         
         // Do not decrement counter
         [self removeRequest:request decrementCounter:NO];
@@ -375,6 +436,7 @@ static const NSTimeInterval kFlushDelay = 0.3;
         }
     } else if ([_requests containsObject:request] && [request isLoading]) {
         RKLogDebug(@"Canceled loading request %@ and removed from queue %@", request, self);
+        NSLog(@"Canceled loading request %@ and removed from queue %@", request, self);
         
 		[request cancel];
 		request.delegate = nil;
@@ -431,8 +493,9 @@ static const NSTimeInterval kFlushDelay = 0.3;
  */
 - (void)requestFinishedWithNotification:(NSNotification*)notification {
     NSAssert([notification.object isKindOfClass:[RKRequest class]], @"Notification expected to contain an RKRequest, got a %@", NSStringFromClass([notification.object class]));
-    
     RKRequest* request = (RKRequest*)notification.object;
+    // Left NSLogs here  in case we want to re-examine queue behavoir
+    //NSLog(@"requestFinishedWithNotification request =%@",request);
     NSDictionary* userInfo = [notification userInfo];
     if ([self containsRequest:request]) {
         // Decrement the counter
@@ -441,6 +504,7 @@ static const NSTimeInterval kFlushDelay = 0.3;
         if ([notification.name isEqualToString:RKRequestDidLoadResponseNotification]) {
             // We successfully loaded a response
             RKLogDebug(@"Received response for request %@, removing from queue. (Now loading %lu of %lu)", request, (unsigned long) _loadingCount, (unsigned long) _concurrentRequestsLimit);
+            //NSLog(@"Received response for request %@, removing from queue. (Now loading %lu of %lu)", request, (unsigned long) _loadingCount, (unsigned long) _concurrentRequestsLimit);
             
             RKResponse* response = [userInfo objectForKey:RKRequestDidLoadResponseNotificationUserInfoResponseKey];                        
             if ([_delegate respondsToSelector:@selector(requestQueue:didLoadResponse:)]) {
@@ -451,10 +515,14 @@ static const NSTimeInterval kFlushDelay = 0.3;
             NSError* error = nil;
             if (userInfo) {
                 error = [userInfo objectForKey:RKRequestDidFailWithErrorNotificationUserInfoErrorKey];
-                RKLogDebug(@"Request %@ failed loading in queue %@ with error: %@.(Now loading %ld of %ld)", request, self, 
-                           [error localizedDescription], (long) _loadingCount, (long) _concurrentRequestsLimit);
+                RKLogDebug(@"Request %@ failed loading in queue %@ with error: %@.(Now loading %ld of %ld)", request, self,
+                          [error localizedDescription], (long) _loadingCount, (long) _concurrentRequestsLimit);
+                //NSLog(@"Request %@ failed loading in queue %@ with error: %@.(Now loading %ld of %ld)", request, self,
+                //           [error localizedDescription], (long) _loadingCount, (long) _concurrentRequestsLimit);
+
             } else {
                 RKLogWarning(@"Received RKRequestDidFailWithErrorNotification without a userInfo, something is amiss...");
+                //NSLog(@"Received RKRequestDidFailWithErrorNotification without a userInfo, something is amiss...");
             }
             
             if ([_delegate respondsToSelector:@selector(requestQueue:didFailRequest:withError:)]) {
@@ -466,6 +534,7 @@ static const NSTimeInterval kFlushDelay = 0.3;
         [self loadNextInQueue];
     } else {
         RKLogWarning(@"Request queue %@ received unexpected lifecycle notification %@ for request %@: Request not found in queue.", [notification name], self, request);
+        //NSLog(@"Request queue %@ received unexpected lifecycle notification %@ for request %@: Request not found in queue.", [notification name], self, request);
     }
 }
 

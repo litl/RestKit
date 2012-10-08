@@ -365,11 +365,11 @@
 - (void)fireAsynchronousRequest {
     RKLogDebug(@"Sending asynchronous %@ request to URL %@.", [self HTTPMethod], [[self URL] absoluteString]);
     if (![self prepareURLRequest]) {
-        // TODO: Logging
+        // TODO: Logging but never get here, prepareURLRequest always returns YES
         return;
     }
-    
-    _isLoading = YES;    
+
+    _isLoading = YES;
     
     if ([self.delegate respondsToSelector:@selector(requestDidStartLoad:)]) {
         [self.delegate requestDidStartLoad:self];
@@ -440,7 +440,7 @@
                 
                 [self cancelAndInformDelegate:NO];
                 [self cleanupBackgroundTask];
-                
+
                 if ([_delegate respondsToSelector:@selector(requestDidTimeout:)]) {
                     [_delegate requestDidTimeout:self];
                 }
@@ -535,6 +535,7 @@
 }
 
 - (void)didFailLoadWithError:(NSError*)error {
+    RKLogInfo(@"RKRequest didFailLoadWithError %@ request %@",self, [[self URL] absoluteString]);
 	if (_cachePolicy & RKRequestCachePolicyLoadOnError &&
 		[self.cache hasResponseForRequest:self]) {
 
@@ -563,6 +564,7 @@
   	_isLoading = NO;
   	_isLoaded = YES;
     
+    RKLogInfo(@"RKRequest didFinishLoad response for request %@, url=%@",self, [[self URL] absoluteString]);
     RKLogInfo(@"Status Code: %ld", (long) [response statusCode]);
     RKLogDebug(@"Body: %@", [response bodyAsString]);
 
