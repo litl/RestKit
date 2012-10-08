@@ -556,7 +556,7 @@
 
 - (void)updateInternalCacheDate {
     NSDate* date = [NSDate date];
-    RKLogInfo(@"Updating cache date for request %@ to %@", self, date);
+    RKLogDebug(@"Updating cache date for request %@ to %@", self, date);
     [self.cache setCacheDate:date forRequest:self];
 }
 
