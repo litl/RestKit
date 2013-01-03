@@ -180,9 +180,9 @@ static const NSTimeInterval kFlushDelay = 0.3;
 }
 
 - (NSString*)description {
-    return [NSString stringWithFormat:@"<%@: %p name=%@ suspended=%@ requestCount=%ld loadingCount=%ld/%ld>",
+    return [NSString stringWithFormat:@"<%@: %p name=%@ suspended=%@ requestCount=%ul loadingCount=%ul/%ul>",
             NSStringFromClass([self class]), self, self.name, self.suspended ? @"YES" : @"NO", 
-            self.count, self.loadingCount, self.concurrentRequestsLimit];
+            (uint)self.count, (uint)self.loadingCount, (uint)self.concurrentRequestsLimit];
 }
 
 - (void)setLoadingCount:(NSUInteger)count {
